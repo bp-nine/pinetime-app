@@ -100,3 +100,94 @@ It is much more important for us to understand the hardware environment that the
 There is useful information on the [the pine64 website](https://www.pine64.org/pinetime/) that gives such things as port numbers, that we will need to obtain access to the various devices.
 We will certainly use libraries to access the devices, and in my case, I will only use a library that I can obtain the source code for, since I might have to convert C++ to C (for instance).
 
+
+## Drawing the watchface
+
+Once the development environment is verified and you have loaded at least some pre-written, known working application, we can turn to the design of this application.
+
+This application will draw the watchface as a set of vectors.
+For this we need to know the x,y coordinates of every line that needs to be drawn on the watchface.
+
+I like a circular watchface, with:
+* the 12, 3, 6, and 9 o'clock tick marks to be large
+* the 1, 2, 4, 5, 7, 8, 10, 11 o'clock tick marks to be medium
+* each remaining minute tick mark to be small.
+
+This leaves me room in each corner for display icons, and buttons to select other functionality.
+There is also the possibility of utilizing the push button on the side of the watch but I'm not sure about that yet.
+
+### How to calculate the location of each x,y co-ordinate?
+
+There is a simple trigonometric formula that you can use to determine this:
+
+    x = cx + r * cos(a)
+    y = cy + r * sin(a)
+
+    Where r is the radius, cx,cy the origin, and a the angle.
+
+We know that the diameter of the watchface will be the dimension of the pinetime display, 320x320 pixels.  Some documentation has it at 240x240 pixels but I'll assume 320x320 for now.  It will be easy enough to recalculate if needed.
+
+The values to plug into the formula are:
+
+* r is the radius (which is **half** the diameter)
+* cx,cy the origin (or the center of the circle: 160,160)
+* a the angle (which ranges 0 - 360, or 6 * the current minute)
+
+
+Please remember that our aim is to calculate these x,y coordinates ahead of time so we don't have to do it on the pinetime!
+The reason for this is that we don't know yet what the capabilities of the C runtime library are, and in any case, calculating them ahead of time and just using the pre-caculated values as needed is much more efficient.
+Also, it lets me draw the watchface on a graphics context and grab the screen shot above :-)
+
+Now then, back to calculating the x,y locations of the start and end point of each tick mark.
+For this, we need to take the formula described above, and apply it to each of the 60 tick marks on the watch face:
+
+    for (int i = 0; i < 60; i++)
+    {
+      int tick_length = 10;  // default to 10
+      // set length of tick mark
+      if (i == 0 || i == 15 || i == 30 || i == 45)
+      {
+        tick_length = 30;
+      }
+      else if (i ==  5 || i == 10 || i == 20 || i == 25
+            || i == 35 || i == 40 || i == 50 || i == 55 )
+      {
+        tick_length = 20;
+      }
+      else
+      {
+        tick_length = 10;
+      }
+
+      retval->ticks[i].angle_degrees = i * 6;
+      retval->ticks[i].angle_radians = retval->ticks[i].angle_degrees * G_PI / 180.0;
+      retval->ticks[i].start_x = center_x + retval->radius_pixels * cos(retval->ticks[i].angle_radians);
+      retval->ticks[i].start_y = center_y + retval->radius_pixels * sin(retval->ticks[i].angle_radians);;
+      retval->ticks[i].end_x = center_x + (retval->radius_pixels - tick_length) * cos(retval->ticks[i].angle_radians);
+      retval->ticks[i].end_y = center_y + (retval->radius_pixels - tick_length) * sin(retval->ticks[i].angle_radians);;
+      // x = cx + r * cos(a)
+      // y = cy + r * sin(a)
+
+      // Where r is the radius, cx,cy the origin, and a the angle.
+    }
+
+For these trig functions (in the C runtime library) to work, the degrees must be expressed in **radians**.
+This means that 0 - 360 degrees is expressed in radians as 0 - 6.178466 radians, which is what the `cos()` and `sin()` functions need.
+Note that `6.178466 radians = 2 * PI` .
+
+This snippet of code is initializing an array of 60 X,Y co-ordinates, each element of the array contains two such x,y coordinates: one for the start, one for the end of the line to draw.
+
+You can also see some tests at the top of the loop that determine what length the tick mark should be for each of the minute marks on the watch face.
+
+What comes out of this snippet of code is an array, 60 elements (one for each minute-mark on the watch face), containing a set of two x,y coordinates, the start and the end position of the tick mark at each minute position.
+
+**Remember, this is not a program you have to write or run, it is only included here so you can see how the x,y coordinates were calculated.  Please do not request this code, as I regret I cannot share it.**
+
+The application in this repository will simply include the result of these calculations in the form of an array of 60 elements, all pre-populated with the correct x,y coordinates.
+
+If it turns out the pionetime display is really 240x240, it will be trivial to generate a new array with the new x,y coordinates.
+
+## How to drive the display?
+
+(work in progress)
+
